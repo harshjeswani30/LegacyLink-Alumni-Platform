@@ -16,8 +16,11 @@ export interface MentorshipPreferences {
 }
 
 export class MentorshipMatcher {
-  private supabase = createClient()
   private embeddingsApi = process.env.NEXT_PUBLIC_HF_EMBEDDINGS_API
+
+  private async getSupabase() {
+    return await createClient()
+  }
 
   /**
    * Find the best mentor matches for a mentee based on their preferences and profile
@@ -27,8 +30,10 @@ export class MentorshipMatcher {
     preferences: MentorshipPreferences = {},
     limit: number = 10
   ): Promise<MentorshipMatch[]> {
+    const supabase = await this.getSupabase()
+    
     // Get mentee profile
-    const { data: mentee } = await this.supabase
+    const { data: mentee } = await supabase
       .from("profiles")
       .select("*, alumni_profile:alumni_profiles(*)")
       .eq("id", menteeId)
@@ -39,7 +44,7 @@ export class MentorshipMatcher {
     }
 
     // Get all available mentors (alumni who are available for mentoring)
-    const { data: mentors } = await this.supabase
+    const { data: mentors } = await supabase
       .from("profiles")
       .select(`
         *,

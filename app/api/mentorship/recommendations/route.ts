@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { mentorshipMatcher } from "@/lib/mentorship-matching"
 import { createClient } from "@/lib/supabase/server"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const {
