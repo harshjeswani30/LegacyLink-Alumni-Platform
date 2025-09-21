@@ -9,17 +9,36 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
+  console.log('🔍 Verification endpoint called for user:', params.userId)
+  
   try {
+    // Check if service role key exists first
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('❌ SUPABASE_SERVICE_ROLE_KEY not found in environment')
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
+    }
+
+    console.log('🔍 Creating supabase client...')
     const supabase = await createClient()
 
+    console.log('🔍 Getting current user...')
     // Get current user
     const {
       data: { user },
+      error: userError
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (userError) {
+      console.error('❌ Error getting user:', userError)
+      return NextResponse.json({ error: "Authentication error", details: userError.message }, { status: 401 })
     }
+
+    if (!user) {
+      console.error('❌ No user found in session')
+      return NextResponse.json({ error: "Unauthorized - no user session" }, { status: 401 })
+    }
+
+    console.log('✅ User authenticated:', user.id)
 
     // Ensure caller is a university_admin in same university as target
     const { data: adminProfile, error: adminErr } = await supabase
@@ -48,12 +67,24 @@ export async function POST(
       return NextResponse.json({ error: "Cross-university action not allowed" }, { status: 403 })
     }
 
-    console.log(`Admin ${adminProfile.id} attempting to verify user ${targetUserId}`)
+    console.log(`✅ Admin ${adminProfile.id} attempting to verify user ${targetUserId}`)
     
     // Use service role client to bypass RLS for the update
-    const serviceSupabase = createServiceRoleClient()
+    console.log('🔍 Creating service role client...')
+    let serviceSupabase
+    try {
+      serviceSupabase = createServiceRoleClient()
+      console.log('✅ Service role client created successfully')
+    } catch (serviceError) {
+      console.error('❌ Failed to create service role client:', serviceError)
+      return NextResponse.json({ 
+        error: "Service configuration error", 
+        details: serviceError instanceof Error ? serviceError.message : "Unknown service error"
+      }, { status: 500 })
+    }
     
     // Perform the update using service role (bypasses RLS)
+    console.log('🔍 Updating user verification status...')
     const { error: updateErr } = await serviceSupabase
       .from("profiles")
       .update({ verified: true, updated_at: new Date().toISOString() })
