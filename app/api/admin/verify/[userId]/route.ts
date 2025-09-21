@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createServiceRoleClient } from "@/lib/supabase/service"
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic'
@@ -47,25 +48,65 @@ export async function POST(
       return NextResponse.json({ error: "Cross-university action not allowed" }, { status: 403 })
     }
 
-    const { error: updateErr } = await supabase
+    console.log(`Admin ${adminProfile.id} attempting to verify user ${targetUserId}`)
+    
+    // Use service role client to bypass RLS for the update
+    const serviceSupabase = createServiceRoleClient()
+    
+    // Perform the update using service role (bypasses RLS)
+    const { error: updateErr } = await serviceSupabase
       .from("profiles")
       .update({ verified: true, updated_at: new Date().toISOString() })
       .eq("id", targetUserId)
 
     if (updateErr) {
-      return NextResponse.json({ error: "Failed to verify" }, { status: 500 })
+      console.error("Database update error:", updateErr)
+      return NextResponse.json({ 
+        error: "Failed to verify", 
+        details: updateErr.message 
+      }, { status: 500 })
     }
 
-    // Optional: award verification badge
-    await supabase.from("badges").insert({
-      user_id: targetUserId,
-      title: "Verified Alumni",
-      description: "Profile verified by university administration",
-      points: 100,
-      badge_type: "profile",
-    })
+    console.log("Verification update completed successfully")
+    
+    // Verify the update by fetching the user again (using service role)
+    const { data: verifiedUser, error: fetchErr } = await serviceSupabase
+      .from("profiles")
+      .select("id, full_name, email, verified, updated_at")
+      .eq("id", targetUserId)
+      .single()
 
-    return NextResponse.json({ success: true })
+    if (fetchErr) {
+      console.error("Error fetching verified user:", fetchErr)
+      // Still return success since the update worked
+    } else {
+      console.log("Verified user data:", verifiedUser)
+    }
+
+    // Optional: award verification badge (using service role)
+    try {
+      const { data: badgeData, error: badgeErr } = await serviceSupabase.from("badges").insert({
+        user_id: targetUserId,
+        title: "Verified Alumni",
+        description: "Profile verified by university administration",
+        points: 100,
+        badge_type: "profile",
+      }).select()
+      
+      if (badgeErr) {
+        console.warn("Badge creation failed:", badgeErr)
+      } else {
+        console.log("Badge created:", badgeData)
+      }
+    } catch (badgeError) {
+      console.warn("Badge creation exception:", badgeError)
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      verified_user: verifiedUser || null,
+      timestamp: new Date().toISOString()
+    })
   } catch (e) {
     console.error("admin verify error", e)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

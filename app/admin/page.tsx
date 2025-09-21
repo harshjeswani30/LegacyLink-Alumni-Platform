@@ -291,7 +291,7 @@ export default async function AdminPage() {
           {pendingProfiles && pendingProfiles.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {pendingProfiles.slice(0, 9).map((profile) => (
-                <Card key={profile.id} className="border-border/50">
+                <Card key={profile.id} className="border-border/50" data-profile-id={profile.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">

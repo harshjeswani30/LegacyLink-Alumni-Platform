@@ -49,53 +49,14 @@ export function AlumniVerificationActions({ alumni }: AlumniVerificationActionsP
       }
 
       const result = await response.json()
-      console.log('✅ Verification API response:', result)
+      console.log('✅ Verification successful:', result)
       
-      // Check if verification actually worked
-      if (result.success && result.verified_user) {
-        console.log('✅ Database verification confirmed:', result.verified_user)
-        alert(`Successfully verified ${alumni.full_name}!`)
-      } else {
-        console.error('❌ Verification may have failed:', result)
-        alert(`Verification response received, but user may not be verified. Check console.`)
-        return // Don't proceed with UI updates if verification failed
-      }
+      // Show success message
+      alert(`Successfully verified ${alumni.full_name}!`)
       
-      // Trigger server-side revalidation to refresh the admin page data
-      console.log('🔵 Revalidating admin page data...')
-      try {
-        await fetch('/api/admin/revalidate', { method: 'POST' })
-        console.log('✅ Page data revalidated')
-      } catch (revalidateError) {
-        console.warn('⚠️ Revalidation failed, falling back to router refresh')
-      }
-      
-      // Use router refresh and fallback to hard refresh
+      // Refresh the page to show updated verification status
+      console.log('🔵 Refreshing page...')
       router.refresh()
-      
-      // Immediately hide the card after successful verification
-      const currentCard = document.querySelector(`[data-profile-id="${alumni.id}"]`) as HTMLElement
-      if (currentCard) {
-        console.log('🔵 Hiding verified user card immediately...')
-        currentCard.style.opacity = '0.5'
-        currentCard.style.transform = 'scale(0.95)'
-        currentCard.style.transition = 'all 0.3s ease'
-        
-        // Remove the card after animation
-        setTimeout(() => {
-          currentCard.remove()
-          console.log('✅ Verified user card removed from UI')
-        }, 300)
-      }
-      
-      // Fallback: refresh if needed after delay
-      setTimeout(() => {
-        const stillVisible = document.querySelector(`[data-profile-id="${alumni.id}"]`)
-        if (stillVisible) {
-          console.log('🔄 Card still visible, forcing refresh...')
-          window.location.reload()
-        }
-      }, 2000)
     } catch (error) {
       console.error("🔴 Error verifying alumni:", error)
       alert("Failed to verify alumni: " + (error instanceof Error ? error.message : "Unknown error"))
@@ -134,41 +95,9 @@ export function AlumniVerificationActions({ alumni }: AlumniVerificationActionsP
       // Show success message
       alert(`Successfully rejected ${alumni.full_name}`)
       
-      // Trigger server-side revalidation to refresh the admin page data
-      console.log('🟠 Revalidating admin page data...')
-      try {
-        await fetch('/api/admin/revalidate', { method: 'POST' })
-        console.log('✅ Page data revalidated')
-      } catch (revalidateError) {
-        console.warn('⚠️ Revalidation failed, falling back to router refresh')
-      }
-      
-      // Use router refresh and fallback to hard refresh
+      // Refresh the page to show updated verification status
+      console.log('🟠 Refreshing page...')
       router.refresh()
-      
-      // Immediately hide the card after successful rejection
-      const currentCard = document.querySelector(`[data-profile-id="${alumni.id}"]`) as HTMLElement
-      if (currentCard) {
-        console.log('🟠 Hiding rejected user card immediately...')
-        currentCard.style.opacity = '0.3'
-        currentCard.style.transform = 'scale(0.95)'
-        currentCard.style.transition = 'all 0.3s ease'
-        
-        // Remove the card after animation
-        setTimeout(() => {
-          currentCard.remove()
-          console.log('✅ Rejected user card removed from UI')
-        }, 300)
-      }
-      
-      // Fallback: refresh if needed after delay
-      setTimeout(() => {
-        const stillVisible = document.querySelector(`[data-profile-id="${alumni.id}"]`)
-        if (stillVisible) {
-          console.log('🔄 Card still visible, forcing refresh...')
-          window.location.reload()
-        }
-      }, 2000)
     } catch (error) {
       console.error("🔴 Error rejecting alumni:", error)
       alert("Failed to reject alumni: " + (error instanceof Error ? error.message : "Unknown error"))
