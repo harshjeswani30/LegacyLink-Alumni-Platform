@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createServiceRoleClient } from "@/lib/supabase/service"
 import { redirect } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -42,18 +43,25 @@ export default async function AlumniPage({ searchParams }: AlumniPageProps) {
     redirect("/auth/login")
   }
 
-  // Build query for alumni based on user role and filters
-  let query = supabase
+  // Use service role client for admin users to bypass RLS
+  const isAdmin = ["super_admin", "university_admin", "admin"].includes(profile.role)
+  const queryClient = isAdmin ? createServiceRoleClient() : supabase
+
+  // Build query for alumni based on user role and filters - FRESH WORKING IMPLEMENTATION
+  let query = queryClient
     .from("profiles")
     .select("*, university:universities(*), alumni_profile:alumni_profiles(*)")
-    .eq("role", "alumni")
+    .in("role", ["alumni", "student"]) // Include students for verification queue
 
-  // Role-based filtering
-  if (profile.role === "university_admin" || profile.role === "alumni" || profile.role === "student") {
-    if (profile.university_id) {
-      query = query.eq("university_id", profile.university_id)
-    }
+  // Role-based filtering for non-admins
+  if (!isAdmin && profile.university_id) {
+    query = query.eq("university_id", profile.university_id)
   }
+  // For university admins, filter by their university
+  else if (profile.role === "university_admin" && profile.university_id) {
+    query = query.eq("university_id", profile.university_id)
+  }
+  // Super admins see all (no additional filtering)
 
   // Apply search filters
   if (params.search) {
@@ -66,7 +74,11 @@ export default async function AlumniPage({ searchParams }: AlumniPageProps) {
     query = query.eq("verified", false)
   }
 
-  const { data: alumni } = await query.order("created_at", { ascending: false })
+  const { data: alumni, error: alumniError } = await query.order("created_at", { ascending: false })
+  
+  if (alumniError) {
+    console.error('Alumni query error:', alumniError)
+  }
 
   // Filter by skills and graduation year (client-side for now)
   let filteredAlumni = alumni || []
@@ -90,12 +102,19 @@ export default async function AlumniPage({ searchParams }: AlumniPageProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Alumni Network</h1>
+          <h1 className="text-3xl font-bold text-foreground">Alumni Network [FRESH]</h1>
           <p className="text-muted-foreground">
             {profile.role === "super_admin"
               ? "Manage alumni across all universities"
               : `Connect with ${profile.university?.name} alumni`}
           </p>
+          {params.verified === "false" && (
+            <div className="mt-2">
+              <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                Showing unverified users ({filteredAlumni.length} found)
+              </Badge>
+            </div>
+          )}
         </div>
         {profile.role === "alumni" && (
           <Link href="/dashboard/profile">

@@ -40,15 +40,16 @@ export async function POST(
 
     console.log('✅ User authenticated:', user.id)
 
-    // Ensure caller is a university_admin in same university as target
+    // Ensure caller is an admin (super_admin or university_admin)
     const { data: adminProfile, error: adminErr } = await supabase
       .from("profiles")
       .select("id, role, university_id")
       .eq("id", user.id)
       .single()
 
-    if (adminErr || !adminProfile || adminProfile.role !== "university_admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    if (adminErr || !adminProfile || !["super_admin", "university_admin", "admin"].includes(adminProfile.role)) {
+      console.error('❌ Admin check failed:', { adminErr, adminProfile })
+      return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
     }
 
     const targetUserId = params.userId
@@ -63,7 +64,8 @@ export async function POST(
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    if (targetProfile.university_id !== adminProfile.university_id) {
+    // University admins can only verify users from their university, super admins can verify anyone
+    if (adminProfile.role === "university_admin" && targetProfile.university_id !== adminProfile.university_id) {
       return NextResponse.json({ error: "Cross-university action not allowed" }, { status: 403 })
     }
 

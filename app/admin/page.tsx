@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { createServiceRoleClient } from "@/lib/supabase/service"
 import AdminCreateUniversity from "@/components/admin-create-university"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,67 +34,48 @@ export default async function AdminPage() {
   // Only allow university admins, super admins, and regular admins
   const isAdmin = ["university_admin", "super_admin", "admin"].includes(profile.role)
   
+  // Use service role client for admin operations to bypass RLS
+  const adminSupabase = createServiceRoleClient()
+  
   if (!isAdmin) {
     redirect("/dashboard")
   }
 
-  // Get pending profiles for multi-level verification (SIH Requirement)
-  let pendingQuery = supabase
+  // Get pending profiles for multi-level verification (SIH Requirement) - FRESH WORKING IMPLEMENTATION
+  const { data: allPendingProfiles, error: pendingError } = await adminSupabase
     .from("profiles")
     .select("*, university:universities(*), alumni_profile:alumni_profiles(*)")
     .eq("verified", false)
     .in("role", ["alumni", "student"])
+    .order("created_at", { ascending: false })
 
-  // Filter by university for university admins
-  if (profile.role === "university_admin" && profile.university_id) {
-    pendingQuery = pendingQuery.eq("university_id", profile.university_id)
+  if (pendingError) {
+    console.error('Admin pending profiles query error:', pendingError)
   }
 
-  const { data: pendingProfiles } = await pendingQuery.order("created_at", { ascending: false })
+  // Filter by university for university admins only
+  let pendingProfiles = allPendingProfiles || []
+  if (profile.role === "university_admin" && profile.university_id) {
+    pendingProfiles = pendingProfiles.filter(p => p.university_id === profile.university_id)
+  }
 
   // Get stats for SIH dashboard (FIXED: Separate queries to avoid pollution)
   const isUniversityAdmin = profile.role === "university_admin" && profile.university_id
 
-  const statsQueries = [
-    // Total users
-    isUniversityAdmin 
-      ? supabase.from("profiles").select("*", { count: "exact", head: true }).eq("university_id", profile.university_id)
-      : supabase.from("profiles").select("*", { count: "exact", head: true }),
-    
-    // Verified users  
-    isUniversityAdmin
-      ? supabase.from("profiles").select("*", { count: "exact", head: true }).eq("university_id", profile.university_id).eq("verified", true)
-      : supabase.from("profiles").select("*", { count: "exact", head: true }).eq("verified", true),
-    
-    // Alumni count
-    isUniversityAdmin
-      ? supabase.from("profiles").select("*", { count: "exact", head: true }).eq("university_id", profile.university_id).eq("role", "alumni")
-      : supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "alumni"),
-    
-    // Pending verifications
-    isUniversityAdmin
-      ? supabase.from("profiles").select("*", { count: "exact", head: true }).eq("university_id", profile.university_id).eq("verified", false).in("role", ["alumni", "student"])
-      : supabase.from("profiles").select("*", { count: "exact", head: true }).eq("verified", false).in("role", ["alumni", "student"]),
-    
-    // Student count
-    isUniversityAdmin
-      ? supabase.from("profiles").select("*", { count: "exact", head: true }).eq("university_id", profile.university_id).eq("role", "student")
-      : supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student"),
-    
-    // Mentor count
-    isUniversityAdmin
-      ? supabase.from("profiles").select("*", { count: "exact", head: true }).eq("university_id", profile.university_id).eq("role", "mentor")
-      : supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "mentor")
-  ]
-
-  const [
-    { count: totalUsers },
-    { count: verifiedUsers },
-    { count: alumniCount },
-    { count: pendingCount },
-    { count: studentCount },
-    { count: mentorCount }
-  ] = await Promise.all(statsQueries)
+  // Calculate stats from fresh data - WORKING IMPLEMENTATION
+  const allUsersQuery = isUniversityAdmin 
+    ? adminSupabase.from("profiles").select("*").eq("university_id", profile.university_id)
+    : adminSupabase.from("profiles").select("*")
+  
+  const { data: allUsers } = await allUsersQuery
+  
+  // Calculate counts from actual data
+  const totalUsers = allUsers?.length || 0
+  const verifiedUsers = allUsers?.filter(u => u.verified).length || 0
+  const alumniCount = allUsers?.filter(u => u.role === "alumni").length || 0
+  const pendingCount = pendingProfiles.length
+  const studentCount = allUsers?.filter(u => u.role === "student").length || 0
+  const mentorCount = allUsers?.filter(u => u.role === "mentor").length || 0
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -101,8 +83,8 @@ export default async function AdminPage() {
         <h1 className="text-3xl font-bold mb-2">LegacyLink - Admin Dashboard</h1>
         <p className="text-muted-foreground">
           {profile.role === "super_admin" 
-            ? "Centralized Alumni Data Management & Engagement Platform" 
-            : `${profile.university?.name} - Alumni Network Management`}
+            ? "Centralized Alumni Data Management & Engagement Platform [FRESH]" 
+            : `${profile.university?.name} - Alumni Network Management [FRESH]`}
         </p>
         <div className="mt-2">
           <Badge variant="outline" className="text-blue-600 border-blue-600">
